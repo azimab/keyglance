@@ -25,27 +25,26 @@ struct ShortcutListView: View {
             } else {
                 GeometryReader { geo in
                     let page = ColumnPage(entries: Self.entries(items, grouped: !searching), size: geo.size)
-                    let colors = menuColors
                     HStack(alignment: .top, spacing: ColumnPage.gutter) {
                         ForEach(page.columns.indices, id: \.self) { ci in
-                            let column = page.columns[ci]
-                            let stripes = Self.stripes(column)
                             VStack(alignment: .leading, spacing: 0) {
-                                ForEach(column.indices, id: \.self) { ri in
-                                    entryView(column[ri], metrics: page.metrics, showTopMenu: searching,
-                                              striped: stripes[ri], colors: colors)
+                                ForEach(page.columns[ci].indices, id: \.self) { ri in
+                                    entryView(page.columns[ci][ri], metrics: page.metrics, showTopMenu: searching)
                                 }
                                 if ci == page.columns.count - 1, page.overflow > 0 {
                                     Text("+\(page.overflow) more — add modifiers\(state.pinned ? " or search" : " or pin to search")")
-                                        .font(.system(size: page.metrics.font, weight: .medium))
+                                        .font(.system(size: page.metrics.font - 1, weight: .medium))
                                         .foregroundStyle(.secondary)
+                                        .padding(.horizontal, ColumnPage.rowPadding)
                                         .frame(height: page.metrics.row)
                                 }
                             }
                             .frame(width: page.columnWidth, alignment: .leading)
                         }
-                        Spacer(minLength: 0)
                     }
+                    // Columns have a fixed width and the block is centered, so the layout looks the
+                    // same whether there are 5 shortcuts or 150.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.horizontal, ColumnPage.inset)
                     .padding(.vertical, ColumnPage.vInset)
                 }
@@ -60,7 +59,7 @@ struct ShortcutListView: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Search \(count) shortcuts", text: $state.search)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .focused($searchFocused)
             if !state.search.isEmpty {
                 Button { state.search = "" } label: { Image(systemName: "xmark.circle.fill") }
@@ -68,65 +67,47 @@ struct ShortcutListView: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.07)))
     }
 
-    /// Stable color per top-level menu, in the app's menu order, so a menu keeps its color while searching.
-    private var menuColors: [String: Color] {
-        var map: [String: Color] = [:]
-        for s in state.baseShortcuts where map[s.topMenu] == nil {
-            map[s.topMenu] = Self.palette[map.count % Self.palette.count]
-        }
-        return map
-    }
-
-    static let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .green, .indigo, .red, .cyan, .brown]
-
-    /// Alternate row shading, restarting after each header so every section begins unshaded.
-    static func stripes(_ column: [ColumnPage.Entry]) -> [Bool] {
-        var odd = false
-        return column.map { entry in
-            if case .header = entry { odd = false; return false }
-            defer { odd.toggle() }
-            return odd
-        }
-    }
-
     @ViewBuilder
-    private func entryView(_ entry: ColumnPage.Entry, metrics: ColumnPage.Metrics, showTopMenu: Bool,
-                           striped: Bool, colors: [String: Color]) -> some View {
+    private func entryView(_ entry: ColumnPage.Entry, metrics: ColumnPage.Metrics, showTopMenu: Bool) -> some View {
+        let appName = state.targetApp?.localizedName
         switch entry {
         case let .header(title, continued):
-            let color = colors[title] ?? .secondary
-            HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 3, height: metrics.headerFont + 2)
-                Text(title.uppercased())
-                    .font(.system(size: metrics.headerFont, weight: .bold))
-                    .tracking(0.6)
-                    .foregroundStyle(color)
+            HStack(spacing: 7) {
+                Image(systemName: MenuIcon.symbol(for: title, appName: appName))
+                    .font(.system(size: metrics.headerFont - 1, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: metrics.headerFont + 4)
+                Text(title)
+                    .font(.system(size: metrics.headerFont, weight: .semibold))
+                    .foregroundStyle(.primary)
                 if continued {
-                    Text("cont.").font(.system(size: metrics.headerFont - 1)).foregroundStyle(.tertiary)
+                    Text("continued").font(.system(size: metrics.headerFont - 3)).foregroundStyle(.tertiary)
                 }
             }
             .lineLimit(1)
-            .padding(.leading, ColumnPage.rowPadding - 4)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(.horizontal, ColumnPage.rowPadding - 2)
             .padding(.bottom, metrics.header * 0.16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: metrics.header, alignment: .bottom)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(color.opacity(0.35)).frame(height: 1).padding(.bottom, metrics.header * 0.06)
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1).padding(.bottom, 2)
             }
-            .frame(height: metrics.header)
         case let .item(s):
-            let path = showTopMenu ? s.path : Array(s.path.dropFirst())
-            let color = colors[s.topMenu] ?? .secondary
+            // The top menu is shown by the header (grouped) or the leading icon (search); only submenus go here.
+            let path = Array(s.path.dropFirst())
             HStack(spacing: 8) {
                 if showTopMenu {
-                    Circle().fill(color).frame(width: 7, height: 7)
+                    Image(systemName: MenuIcon.symbol(for: s.topMenu, appName: appName))
+                        .font(.system(size: metrics.font - 2))
+                        .foregroundStyle(.secondary)
+                        .frame(width: metrics.font + 2)
                 }
                 Text(s.title)
                     .font(.system(size: metrics.font))
-                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !path.isEmpty {
@@ -138,12 +119,10 @@ struct ShortcutListView: View {
                         .layoutPriority(-1)
                 }
                 Spacer(minLength: 8)
-                CompactComboView(shortcut: s, fontSize: metrics.font - 0.5, height: metrics.row - 7)
+                CompactComboView(shortcut: s, fontSize: metrics.font - 0.5, height: metrics.row - 8)
             }
             .padding(.horizontal, ColumnPage.rowPadding)
             .frame(height: metrics.row)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.primary.opacity(striped ? 0.05 : 0)))
             .opacity(s.enabled ? 1 : 0.45)
             .help((s.path + [s.title]).joined(separator: " › "))
         }
@@ -161,6 +140,57 @@ struct ShortcutListView: View {
     }
 }
 
+/// SF Symbol for a top-level menu name; falls back to a generic menu glyph.
+enum MenuIcon {
+    static func symbol(for menu: String, appName: String?) -> String {
+        if let appName, menu == appName { return "app" }
+        let key = menu.lowercased()
+        for (names, symbol) in table where names.contains(key) { return symbol }
+        return "filemenu.and.selection"
+    }
+
+    private static let table: [([String], String)] = [
+        (["file", "shell"], "doc"),
+        (["edit"], "pencil"),
+        (["view"], "eye"),
+        (["window", "windows"], "macwindow"),
+        (["help"], "questionmark.circle"),
+        (["history"], "clock.arrow.circlepath"),
+        (["bookmarks", "favorites"], "bookmark"),
+        (["develop", "developer", "debug"], "hammer"),
+        (["format"], "textformat"),
+        (["text", "font"], "textformat.size"),
+        (["insert"], "plus.square"),
+        (["tools"], "wrench.and.screwdriver"),
+        (["go", "navigate", "navigation"], "arrow.turn.up.right"),
+        (["find", "search"], "magnifyingglass"),
+        (["selection", "select"], "selection.pin.in.out"),
+        (["image", "photo", "photos"], "photo"),
+        (["table"], "tablecells"),
+        (["arrange", "object", "layer", "layers"], "square.3.layers.3d"),
+        (["product", "build"], "shippingbox"),
+        (["editor", "code"], "chevron.left.forwardslash.chevron.right"),
+        (["run", "playback", "controls", "media"], "playpause"),
+        (["terminal", "session"], "terminal"),
+        (["tab", "tabs"], "square.on.square"),
+        (["song", "music"], "music.note"),
+        (["mailbox"], "tray"),
+        (["message", "mail"], "envelope"),
+        (["conversation", "chat"], "bubble.left"),
+        (["account", "profile", "profiles", "people"], "person.crop.circle"),
+        (["slide", "slides", "play"], "play.rectangle"),
+        (["filter", "filters"], "camera.filters"),
+        (["extensions", "plugins"], "puzzlepiece"),
+        (["git", "source control"], "arrow.triangle.branch"),
+        (["markup", "annotate"], "pencil.tip.crop.circle"),
+        (["share"], "square.and.arrow.up"),
+        (["calendar"], "calendar"),
+        (["sort"], "arrow.up.arrow.down"),
+        (["data"], "cylinder"),
+        (["sketch", "draw", "shape"], "scribble"),
+    ]
+}
+
 /// Packs entries column-major into the fewest columns that keep rows comfortable, shrinking rows
 /// (down to a floor) when needed so the whole set fits on one page.
 struct ColumnPage {
@@ -173,7 +203,7 @@ struct ColumnPage {
         let row: CGFloat
         var header: CGFloat { row * 1.5 }
         var font: CGFloat { min(14, max(10.5, row * 0.5)) }
-        var headerFont: CGFloat { max(9.5, font - 3) }
+        var headerFont: CGFloat { font + 1.5 }
     }
 
     static let gutter: CGFloat = 28
@@ -182,8 +212,8 @@ struct ColumnPage {
     static let rowPadding: CGFloat = 8
     static let comfortableRow: CGFloat = 30
     static let minRow: CGFloat = 18
-    static let minColumnWidth: CGFloat = 240
-    static let maxColumnWidth: CGFloat = 400
+    static let minColumnWidth: CGFloat = 270
+    static let maxColumnWidth: CGFloat = 340
 
     // Packing works in half-row units so headers (1.5 rows) stay integral.
     private static let itemUnits = 2, headerUnits = 3
@@ -231,7 +261,8 @@ struct ColumnPage {
             metrics = Metrics(row: Self.minRow)
             overflow = entries.filter { if case .item = $0 { return true } else { return false } }.count - shown
         }
-        let n = CGFloat(max(columns.count, 1))
+        // Width comes from the maximum column count, not the used count, so it never changes with content.
+        let n = CGFloat(maxColumns)
         columnWidth = min(Self.maxColumnWidth, max(0, (width - Self.gutter * (n - 1)) / n))
     }
 

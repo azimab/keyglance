@@ -27,11 +27,11 @@ final class OverlayPanel: NSPanel {
 final class OverlayController {
     /// Keyboard: header + keyboard (365) + footer, no slack. List: roomier so rows stay readable.
     static func size(for mode: ViewMode) -> NSSize {
-        mode == .keyboard ? NSSize(width: 940, height: 460) : NSSize(width: 1100, height: 680)
+        mode == .keyboard ? NSSize(width: 940, height: 460) : NSSize(width: 1240, height: 700)
     }
 
     private let state: AppState
-    private var modeObserver: AnyCancellable?
+    private var observers: [AnyCancellable] = []
     private lazy var panel: OverlayPanel = {
         let size = Self.size(for: state.viewMode)
         let panel = OverlayPanel(size: size)
@@ -46,11 +46,14 @@ final class OverlayController {
     init(state: AppState) {
         self.state = state
         // Resize around the current center when switching views while the panel is up.
-        modeObserver = state.$viewMode.dropFirst().removeDuplicates().sink { [weak self] mode in
+        observers.append(state.$darkMode.sink { [weak self] dark in
+            self?.panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        })
+        observers.append(state.$viewMode.dropFirst().removeDuplicates().sink { [weak self] mode in
             guard let self, self.panel.isVisible else { return }
             let center = NSPoint(x: self.panel.frame.midX, y: self.panel.frame.midY)
             self.place(size: Self.size(for: mode), center: center, screen: self.panel.screen)
-        }
+        })
     }
 
     /// Centers a frame of `size` on `center`, shrunk and nudged to stay inside the screen.

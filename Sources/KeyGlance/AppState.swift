@@ -22,6 +22,9 @@ final class AppState: ObservableObject {
     @Published var viewMode: ViewMode { didSet { defaults.set(viewMode.rawValue, forKey: "viewMode") } }
     @Published var hideUniversal: Bool { didSet { defaults.set(hideUniversal, forKey: "hideUniversal") } }
     @Published var hideDisabled: Bool { didSet { defaults.set(hideDisabled, forKey: "hideDisabled") } }
+    @Published var darkMode: Bool { didSet { defaults.set(darkMode, forKey: "darkMode") } }
+    /// Blurred see-through panel background vs. a solid one.
+    @Published var translucent: Bool { didSet { defaults.set(translucent, forKey: "translucent") } }
     @Published var holdDelay: Double { didSet { defaults.set(holdDelay, forKey: "holdDelay") } }
     /// Modifiers that open the overlay when held. Empty = hold-to-show is off.
     @Published var holdModifiers: Modifiers { didSet { defaults.set(holdModifiers.rawValue, forKey: "holdModifiers") } }
@@ -42,12 +45,15 @@ final class AppState: ObservableObject {
 
     init() {
         defaults.register(defaults: ["viewMode": ViewMode.keyboard.rawValue, "hideUniversal": true,
-                                     "hideDisabled": true, "holdDelay": 0.8,
+                                     "hideDisabled": true, "holdDelay": 0.8, "translucent": true,
+                                     "darkMode": UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark",
                                      "holdModifiers": Modifiers([.command, .option, .control, .shift]).rawValue,
                                      "pinHotkeyCode": -1, "pinHotkeyModifiers": 0])
         viewMode = ViewMode(rawValue: defaults.string(forKey: "viewMode") ?? "") ?? .keyboard
         hideUniversal = defaults.bool(forKey: "hideUniversal")
         hideDisabled = defaults.bool(forKey: "hideDisabled")
+        darkMode = defaults.bool(forKey: "darkMode")
+        translucent = defaults.bool(forKey: "translucent")
         holdDelay = defaults.double(forKey: "holdDelay")
         holdModifiers = Modifiers(rawValue: defaults.integer(forKey: "holdModifiers"))
         let code = defaults.integer(forKey: "pinHotkeyCode")

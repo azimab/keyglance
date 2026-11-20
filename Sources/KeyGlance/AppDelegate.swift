@@ -161,6 +161,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
 
+        let dark = item("Dark Mode", #selector(toggleDarkMode))
+        dark.state = state.darkMode ? .on : .off
+        menu.addItem(dark)
+        let translucent = item("Translucent Background", #selector(toggleTranslucent))
+        translucent.state = state.translucent ? .on : .off
+        menu.addItem(translucent)
+        menu.addItem(.separator())
+
         let universal = item("Hide Universal Shortcuts (⌘C, ⌘V…)", #selector(toggleUniversal))
         universal.state = state.hideUniversal ? .on : .off
         menu.addItem(universal)
@@ -223,6 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let raw = sender.representedObject as? String, let mode = ViewMode(rawValue: raw) { state.viewMode = mode }
     }
 
+    @objc private func toggleDarkMode() { state.darkMode.toggle() }
+    @objc private func toggleTranslucent() { state.translucent.toggle() }
     @objc private func toggleUniversal() { state.hideUniversal.toggle() }
     @objc private func toggleDisabled() { state.hideDisabled.toggle() }
     @objc private func setDelay(_ sender: NSMenuItem) {

@@ -19,7 +19,9 @@ struct OverlayView: View {
                 .padding(.vertical, 9)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(VisualEffectBackground())
+        .background {
+            if state.translucent { VisualEffectBackground() } else { Color(nsColor: .windowBackgroundColor) }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
             .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
@@ -75,6 +77,17 @@ struct HeaderView: View {
             .labelsHidden()
             .frame(width: 160)
 
+            HStack(spacing: 2) {
+                iconToggle(state.darkMode ? "moon.fill" : "sun.max",
+                           help: state.darkMode ? "Dark mode on — click for light" : "Light mode — click for dark") {
+                    state.darkMode.toggle()
+                }
+                iconToggle(state.translucent ? "drop.halffull" : "drop.fill",
+                           help: state.translucent ? "Translucent — click for solid background" : "Solid — click for translucent background") {
+                    state.translucent.toggle()
+                }
+            }
+
             Button { state.pinned ? state.requestClose() : state.requestPin() } label: {
                 Image(systemName: state.pinned ? "xmark.circle.fill" : "pin")
                     .font(.system(size: 14))
@@ -84,6 +97,18 @@ struct HeaderView: View {
             .foregroundStyle(.secondary)
             .help(state.pinned ? "Close (esc)" : "Keep open after releasing modifiers")
         }
+    }
+
+    private func iconToggle(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .frame(width: 26, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(help)
     }
 }
 
