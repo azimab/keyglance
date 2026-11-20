@@ -95,11 +95,13 @@ enum SelfTest {
         check("each menu stays in a single column",
               whole.columns.allSatisfy { col in col.filter(isHeader).count >= 1 && isHeader(col[0]) }
               && whole.columns.flatMap { $0 }.filter(isHeader).count == 3)
+        func isGap(_ e: ColumnPage.Entry) -> Bool { if case .gap = e { return true } else { return false } }
         let long = ColumnPage(entries: ShortcutListView.entries(menu("A", 3) + menu("B", 30), grouped: true), size: size)
-        let longHeaders = long.columns.flatMap { $0 }.filter(isHeader).count
-        check("oversize menu splits without a repeated header", longHeaders == 2 && long.columns.count >= 3 && long.overflow == 0)
-        check("oversize menu starts at the top of a fresh column",
-              long.columns.allSatisfy { col in col.dropFirst().allSatisfy { !isHeader($0) } })
+        let flat = long.columns.flatMap { $0 }
+        check("oversize menu splits without a repeated header", flat.filter(isHeader).count == 2 && long.overflow == 0)
+        check("oversize menu starts right after the previous menu", long.columns[0].filter(isHeader).count == 2)
+        check("continuation columns open with a heading-height gap",
+              long.columns.count >= 2 && long.columns.dropFirst().allSatisfy { isGap($0[0]) })
 
         print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) failed.")
         return failures == 0 ? 0 : 1

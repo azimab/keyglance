@@ -75,6 +75,8 @@ struct ShortcutListView: View {
     private func entryView(_ entry: ColumnPage.Entry, metrics: ColumnPage.Metrics, showTopMenu: Bool) -> some View {
         let appName = state.targetApp?.localizedName
         switch entry {
+        case .gap:
+            Color.clear.frame(height: metrics.header)
         case let .header(title):
             HStack(spacing: 7) {
                 Image(systemName: MenuIcon.symbol(for: title, appName: appName))
@@ -193,6 +195,9 @@ enum MenuIcon {
 struct ColumnPage {
     enum Entry {
         case header(String)
+        /// Blank heading-height space at the top of a column that continues a menu, so its rows
+        /// line up with the rows of neighboring columns.
+        case gap
         case item(Shortcut)
     }
 
@@ -264,7 +269,7 @@ struct ColumnPage {
     }
 
     private static func units(_ e: Entry) -> Int {
-        if case .header = e { return headerUnits } else { return itemUnits }
+        if case .item = e { return itemUnits } else { return headerUnits }
     }
 
     /// Smallest per-column capacity (in half-rows) that fits all entries in `columns` columns.
@@ -276,8 +281,9 @@ struct ColumnPage {
     }
 
     /// Column-major fill that keeps each menu (header + its items) together in one column, moving
-    /// the whole menu to the next column when it doesn't fit. Only a menu taller than an entire column
-    /// is split: it starts at the top of a fresh column and flows on into the next, with no repeated header.
+    /// the whole menu to the next column when it doesn't fit. A menu taller than an entire column has
+    /// to split anyway, so it starts right where the current column ends (no empty tail) and flows on
+    /// into the next, each continuation column opening with a heading-height gap instead of a header.
     private static func pack(_ entries: [Entry], capacity: Int) -> (columns: [[Entry]], units: [Int]) {
         var sections: [[Entry]] = []
         for e in entries {
@@ -303,9 +309,15 @@ struct ColumnPage {
                 newColumn()
                 section.forEach(add)
             } else {
-                if !cols[cols.count - 1].isEmpty { newColumn() }
+                // Need room for the header plus a couple of rows, or it would look stranded.
+                if !cols[cols.count - 1].isEmpty, capacity - used[used.count - 1] < headerUnits + itemUnits * 2 {
+                    newColumn()
+                }
                 for e in section {
-                    if used[used.count - 1] + units(e) > capacity { newColumn() }
+                    if used[used.count - 1] + units(e) > capacity {
+                        newColumn()
+                        add(.gap)
+                    }
                     add(e)
                 }
             }

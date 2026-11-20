@@ -32,6 +32,23 @@ enum Snapshot {
                 print(path)
             }
         }
+
+        // A menu taller than a column, to check how a split menu lines up.
+        let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".map(String.init)
+        let tools = letters.map { k in
+            Shortcut(id: "tools-\(k)", title: "Tool Action \(k)", path: ["Tools"], modifiers: [.control, .option],
+                     displayModifiers: [.control, .option], keyCode: nil, keyLabel: k, enabled: true)
+        }
+        state.setShortcutsForTesting(sample(layout: state.layout) + tools)
+        state.viewMode = .list
+        state.filter = []
+        state.pinned = false
+        state.search = ""
+        for appearance in [NSAppearance.Name.darkAqua, .aqua] {
+            let path = "\(outputDirectory)/list-long-\(appearance == .aqua ? "light" : "dark").png"
+            render(OverlayView(state: state), size: OverlayController.size(for: .list), appearance: appearance, to: path)
+            print(path)
+        }
         return 0
     }
 
