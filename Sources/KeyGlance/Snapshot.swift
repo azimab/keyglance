@@ -28,15 +28,14 @@ enum Snapshot {
             state.search = search
             for appearance in [NSAppearance.Name.darkAqua, .aqua] {
                 let path = "\(outputDirectory)/\(name)-\(appearance == .aqua ? "light" : "dark").png"
-                render(OverlayView(state: state), appearance: appearance, to: path)
+                render(OverlayView(state: state), size: OverlayController.size(for: mode), appearance: appearance, to: path)
                 print(path)
             }
         }
         return 0
     }
 
-    private static func render<V: View>(_ view: V, appearance: NSAppearance.Name, to path: String) {
-        let size = OverlayController.size
+    private static func render<V: View>(_ view: V, size: NSSize, appearance: NSAppearance.Name, to path: String) {
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: appearance)

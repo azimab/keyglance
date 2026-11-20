@@ -18,7 +18,7 @@ struct OverlayView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 9)
         }
-        .frame(width: OverlayController.size.width, height: OverlayController.size.height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(VisualEffectBackground())
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)

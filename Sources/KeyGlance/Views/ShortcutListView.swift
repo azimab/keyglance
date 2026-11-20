@@ -25,11 +25,15 @@ struct ShortcutListView: View {
             } else {
                 GeometryReader { geo in
                     let page = ColumnPage(entries: Self.entries(items, grouped: !searching), size: geo.size)
+                    let colors = menuColors
                     HStack(alignment: .top, spacing: ColumnPage.gutter) {
                         ForEach(page.columns.indices, id: \.self) { ci in
+                            let column = page.columns[ci]
+                            let stripes = Self.stripes(column)
                             VStack(alignment: .leading, spacing: 0) {
-                                ForEach(page.columns[ci].indices, id: \.self) { ri in
-                                    entryView(page.columns[ci][ri], metrics: page.metrics, showTopMenu: searching)
+                                ForEach(column.indices, id: \.self) { ri in
+                                    entryView(column[ri], metrics: page.metrics, showTopMenu: searching,
+                                              striped: stripes[ri], colors: colors)
                                 }
                                 if ci == page.columns.count - 1, page.overflow > 0 {
                                     Text("+\(page.overflow) more — add modifiers\(state.pinned ? " or search" : " or pin to search")")
@@ -68,35 +72,78 @@ struct ShortcutListView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.07)))
     }
 
+    /// Stable color per top-level menu, in the app's menu order, so a menu keeps its color while searching.
+    private var menuColors: [String: Color] {
+        var map: [String: Color] = [:]
+        for s in state.baseShortcuts where map[s.topMenu] == nil {
+            map[s.topMenu] = Self.palette[map.count % Self.palette.count]
+        }
+        return map
+    }
+
+    static let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .green, .indigo, .red, .cyan, .brown]
+
+    /// Alternate row shading, restarting after each header so every section begins unshaded.
+    static func stripes(_ column: [ColumnPage.Entry]) -> [Bool] {
+        var odd = false
+        return column.map { entry in
+            if case .header = entry { odd = false; return false }
+            defer { odd.toggle() }
+            return odd
+        }
+    }
+
     @ViewBuilder
-    private func entryView(_ entry: ColumnPage.Entry, metrics: ColumnPage.Metrics, showTopMenu: Bool) -> some View {
+    private func entryView(_ entry: ColumnPage.Entry, metrics: ColumnPage.Metrics, showTopMenu: Bool,
+                           striped: Bool, colors: [String: Color]) -> some View {
         switch entry {
         case let .header(title, continued):
-            Text(title.uppercased() + (continued ? " (cont.)" : ""))
-                .font(.system(size: max(8, metrics.font - 2.5), weight: .semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(height: metrics.header, alignment: .bottomLeading)
-                .padding(.bottom, metrics.header * 0.12)
+            let color = colors[title] ?? .secondary
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 3, height: metrics.headerFont + 2)
+                Text(title.uppercased())
+                    .font(.system(size: metrics.headerFont, weight: .bold))
+                    .tracking(0.6)
+                    .foregroundStyle(color)
+                if continued {
+                    Text("cont.").font(.system(size: metrics.headerFont - 1)).foregroundStyle(.tertiary)
+                }
+            }
+            .lineLimit(1)
+            .padding(.leading, ColumnPage.rowPadding - 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(.bottom, metrics.header * 0.16)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(color.opacity(0.35)).frame(height: 1).padding(.bottom, metrics.header * 0.06)
+            }
+            .frame(height: metrics.header)
         case let .item(s):
             let path = showTopMenu ? s.path : Array(s.path.dropFirst())
-            HStack(spacing: 6) {
+            let color = colors[s.topMenu] ?? .secondary
+            HStack(spacing: 8) {
+                if showTopMenu {
+                    Circle().fill(color).frame(width: 7, height: 7)
+                }
                 Text(s.title)
                     .font(.system(size: metrics.font))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !path.isEmpty {
                     Text(path.joined(separator: " › "))
-                        .font(.system(size: max(8, metrics.font - 2)))
+                        .font(.system(size: metrics.font - 2))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.head)
                         .layoutPriority(-1)
                 }
-                Spacer(minLength: 4)
-                CompactComboView(shortcut: s, fontSize: metrics.font - 0.5, height: metrics.row - 3)
+                Spacer(minLength: 8)
+                CompactComboView(shortcut: s, fontSize: metrics.font - 0.5, height: metrics.row - 7)
             }
+            .padding(.horizontal, ColumnPage.rowPadding)
             .frame(height: metrics.row)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(striped ? 0.05 : 0)))
             .opacity(s.enabled ? 1 : 0.45)
             .help((s.path + [s.title]).joined(separator: " › "))
         }
@@ -125,16 +172,18 @@ struct ColumnPage {
     struct Metrics {
         let row: CGFloat
         var header: CGFloat { row * 1.5 }
-        var font: CGFloat { min(13, max(8.5, row * 0.58)) }
+        var font: CGFloat { min(14, max(10.5, row * 0.5)) }
+        var headerFont: CGFloat { max(9.5, font - 3) }
     }
 
-    static let gutter: CGFloat = 22
-    static let inset: CGFloat = 20
-    static let vInset: CGFloat = 8
-    static let comfortableRow: CGFloat = 22
-    static let minRow: CGFloat = 10
-    static let minColumnWidth: CGFloat = 160
-    static let maxColumnWidth: CGFloat = 420
+    static let gutter: CGFloat = 28
+    static let inset: CGFloat = 22
+    static let vInset: CGFloat = 12
+    static let rowPadding: CGFloat = 8
+    static let comfortableRow: CGFloat = 30
+    static let minRow: CGFloat = 18
+    static let minColumnWidth: CGFloat = 240
+    static let maxColumnWidth: CGFloat = 400
 
     // Packing works in half-row units so headers (1.5 rows) stay integral.
     private static let itemUnits = 2, headerUnits = 3
@@ -234,11 +283,17 @@ struct CompactComboView: View {
     let height: CGFloat
 
     var body: some View {
-        Text(shortcut.displayModifiers.symbolString + shortcut.keyLabel)
+        HStack(spacing: 1) {
+            Text(shortcut.displayModifiers.symbolString)
+                .foregroundStyle(.secondary)
+            Text(shortcut.keyLabel)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+        }
             .font(.system(size: fontSize, weight: .medium, design: .rounded))
             .lineLimit(1)
             .fixedSize()
-            .padding(.horizontal, 5)
+            .padding(.horizontal, 6)
             .frame(minHeight: max(0, height))
             .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.09)))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.primary.opacity(0.12)))
