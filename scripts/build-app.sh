@@ -19,7 +19,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 xcrun swiftc $OPT -swift-version 5 \
   -target "$ARCH-apple-macos13.0" \
   -module-name KeyGlance \
-  -framework AppKit -framework Carbon -framework ApplicationServices -framework SwiftUI \
+  -framework AppKit -framework Carbon -framework ApplicationServices -framework SwiftUI -framework Security \
   $(find Sources/KeyGlance -name '*.swift' | sort) \
   -o "$APP/Contents/MacOS/KeyGlance"
 

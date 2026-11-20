@@ -4,6 +4,8 @@ import Carbon
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let state = AppState()
     private lazy var overlay = OverlayController(state: state)
+    private lazy var catalog = ShortcutCatalog(layout: state.layout)
+    private lazy var manager = ManagerWindowController(catalog: catalog)
     private let hotkeys = HotkeyMonitor()
     private let pinHotkey = GlobalHotkey()
     /// After the pin hotkey opens the overlay, ignore modifier changes until everything is released,
@@ -22,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkeys.start()
         pinHotkey.onPress = { [weak self] in self?.pinHotkeyPressed() }
         pinHotkey.register(state.pinHotkey)
+
+        state.onMenusRead = { [weak self] app, items in self?.catalog.record(app, items) }
+        catalog.pinHotkey = state.pinHotkey
+        catalog.onShowOverlay = { [weak self] in self?.pinHotkeyPressed() }
+        catalog.applyHotkeys()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(appActivated(_:)),
@@ -123,7 +130,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let app = NSWorkspace.shared.frontmostApplication { state.prefetch(app) }
     }
 
-    @objc private func inputSourceChanged() { state.reloadLayout() }
+    @objc private func inputSourceChanged() {
+        state.reloadLayout()
+        catalog.layout = state.layout
+    }
 
     private func pollForTrust() {
         trustTimer?.invalidate()
@@ -151,6 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "App"
         menu.addItem(item("Show Shortcuts for \(appName)", #selector(showFromMenu)))
+        menu.addItem(.separator())
+        addManagerSection(to: menu)
         menu.addItem(.separator())
 
         for mode in ViewMode.allCases {
@@ -214,6 +226,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Quit KeyGlance", #selector(quit), key: "q"))
     }
 
+    /// Cross-app section: manager window, conflicts at a glance, and the user's universal hotkeys.
+    private func addManagerSection(to menu: NSMenu) {
+        catalog.refreshSystem()
+        menu.addItem(item("Shortcut Manager…", #selector(openManager(_:))))
+
+        let conflicts = catalog.conflicts
+        let conflictMenu = NSMenu()
+        if conflicts.isEmpty {
+            let none = NSMenuItem(title: "No conflicts in \(catalog.apps.count) scanned apps", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            conflictMenu.addItem(none)
+        }
+        for kind in Conflict.Kind.allCases {
+            let group = conflicts.filter { $0.kind == kind }
+            guard !group.isEmpty else { continue }
+            if conflictMenu.numberOfItems > 0 { conflictMenu.addItem(.separator()) }
+            let header = NSMenuItem(title: kind.title, action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            conflictMenu.addItem(header)
+            for conflict in group.prefix(8) {
+                let i = item("\(conflict.combo)   \(conflict.headline)", #selector(openManager(_:)))
+                i.representedObject = ManagerSection.conflicts.rawValue
+                conflictMenu.addItem(i)
+            }
+            if group.count > 8 {
+                let more = item("\(group.count - 8) more…", #selector(openManager(_:)))
+                more.representedObject = ManagerSection.conflicts.rawValue
+                conflictMenu.addItem(more)
+            }
+        }
+        conflictMenu.addItem(.separator())
+        let all = item("Show All Conflicts…", #selector(openManager(_:)))
+        all.representedObject = ManagerSection.conflicts.rawValue
+        conflictMenu.addItem(all)
+        let scan = item(catalog.scanProgress == nil ? "Scan Running Apps" : "Scanning…", #selector(scanApps))
+        scan.isEnabled = catalog.scanProgress == nil && AXIsProcessTrusted()
+        conflictMenu.addItem(scan)
+        let conflictItem = NSMenuItem(title: conflicts.isEmpty ? "Conflicts" : "Conflicts (\(conflicts.count))",
+                                      action: nil, keyEquivalent: "")
+        if !conflicts.isEmpty {
+            conflictItem.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "Conflicts")
+        }
+        conflictItem.submenu = conflictMenu
+        menu.addItem(conflictItem)
+
+        let hotkeyMenu = NSMenu()
+        for hotkey in catalog.customHotkeys {
+            let i = item(hotkey.name, #selector(runHotkey(_:)))
+            i.representedObject = hotkey.id.uuidString
+            if let char = MenuRemapper.character(for: hotkey.combo.keyCode, layout: state.layout) {
+                i.keyEquivalent = char
+                i.keyEquivalentModifierMask = hotkey.combo.modifiers.eventFlags
+            }
+            if !hotkey.enabled || catalog.failedHotkeys.contains(hotkey.id) { i.state = .mixed }
+            hotkeyMenu.addItem(i)
+        }
+        if !catalog.customHotkeys.isEmpty { hotkeyMenu.addItem(.separator()) }
+        let add = item("Add Hotkey…", #selector(openManager(_:)))
+        add.representedObject = ManagerSection.hotkeys.rawValue
+        hotkeyMenu.addItem(add)
+        let remaps = item("Menu Remaps…", #selector(openManager(_:)))
+        remaps.representedObject = ManagerSection.remaps.rawValue
+        hotkeyMenu.addItem(remaps)
+        let hotkeyItem = NSMenuItem(title: "Universal Hotkeys", action: nil, keyEquivalent: "")
+        hotkeyItem.submenu = hotkeyMenu
+        menu.addItem(hotkeyItem)
+    }
+
+    @objc private func openManager(_ sender: NSMenuItem) {
+        let section = (sender.representedObject as? String).flatMap(ManagerSection.init(rawValue:)) ?? .all
+        DispatchQueue.main.async { [self] in manager.show(section) }
+    }
+
+    @objc private func scanApps() { catalog.scanRunningApps() }
+
+    @objc private func runHotkey(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let hotkey = catalog.customHotkeys.first(where: { $0.id.uuidString == raw }) else { return }
+        DispatchQueue.main.async { [self] in catalog.run(hotkey.action) }
+    }
+
     private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
         let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
         i.target = self
@@ -254,6 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             if pinHotkey.register(combo) {
                 state.pinHotkey = combo
+                catalog.pinHotkey = combo
             } else {
                 pinHotkey.register(state.pinHotkey)
                 let alert = NSAlert()
@@ -267,6 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func clearPinHotkey() {
         state.pinHotkey = nil
+        catalog.pinHotkey = nil
         pinHotkey.register(nil)
     }
 

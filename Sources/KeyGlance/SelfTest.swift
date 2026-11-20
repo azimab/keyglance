@@ -103,6 +103,60 @@ enum SelfTest {
         check("continuation columns open with a heading-height gap",
               long.columns.count >= 2 && long.columns.dropFirst().allSatisfy { isGap($0[0]) })
 
+        // System shortcuts: defaults fill in, stored overrides win, "no key" removes.
+        let sys = SystemHotkeys.parse([
+            "64": ["enabled": false],
+            "32": ["enabled": true, "value": ["parameters": [65535, 126, 0x840000], "type": "standard"]],
+            "163": ["enabled": true, "value": ["parameters": [65535, 65535, 0], "type": "standard"]],
+            "190": ["enabled": true, "value": ["parameters": [113, 12, 0x800000], "type": "standard"]],
+            "34": ["enabled": true, "value": ["parameters": [65535, 126, 0x860000], "type": "standard"]],
+        ])
+        check("⇧⌘3 screenshot default present", sys.contains { $0.id == 28 && $0.keyCode == 20 && $0.modifiers == [.shift, .command] && $0.enabled })
+        check("Spotlight override: off", sys.first { $0.id == 64 }?.enabled == false)
+        check("Mission Control: ⌃↑ (fn implied, not shown)", sys.first { $0.id == 32 }.map { $0.modifiers == [.control] && !$0.fn } == true)
+        check("Quick Note: fn Q", sys.first { $0.id == 190 }.map { $0.fn && $0.modifiers.isEmpty } == true)
+        check("no-key entry and hidden variants dropped", !sys.contains { $0.id == 163 || $0.id == 34 })
+
+        // Conflicts across apps.
+        func snap(_ id: String, _ items: [Shortcut]) -> AppMenuSnapshot {
+            AppMenuSnapshot(bundleID: id, name: id, appPath: nil, scannedAt: Date(), shortcuts: items)
+        }
+        let catalog = ShortcutCatalog(layout: layout, persistent: false)
+        catalog.setForTesting(
+            apps: [
+                snap("editor", [s("Jump Up", [.control], "↑", code: 126), s("New", [.command], "N", code: 45),
+                                s("Go to Line", [.command], "L", code: 37), s("Lock", [.command], "L", code: 37)]),
+                snap("browser", [s("New", [.command], "N", code: 45), s("Downloads", [.option, .command], "L", code: 37)]),
+            ],
+            system: [SystemHotkey(id: 32, name: "Mission Control", keyCode: 126, modifiers: [.control], fn: false, enabled: true),
+                     SystemHotkey(id: 64, name: "Spotlight", keyCode: 49, modifiers: [.command], fn: false, enabled: true),
+                     SystemHotkey(id: 65, name: "Finder search", keyCode: 49, modifiers: [.option, .command], fn: false, enabled: false)],
+            hotkeys: [CustomHotkey(name: "Terminal", combo: KeyCombo(keyCode: 49, modifiers: [.command]), action: .showOverlay),
+                      CustomHotkey(name: "Off one", combo: KeyCombo(keyCode: 37, modifiers: [.option, .command]),
+                                   action: .showOverlay, enabled: false)])
+        let kinds = catalog.conflicts.map(\.kind)
+        check("Mission Control blocks editor's ⌃↑", catalog.conflicts.contains {
+            $0.kind == .shadowed && $0.entries.contains { $0.title == "Jump Up" } })
+        check("hotkey ⌘Space clashes with Spotlight", catalog.conflicts.contains {
+            $0.kind == .globalClash && Set($0.entries.map(\.title)) == ["Spotlight", "Terminal"] })
+        check("editor ⌘L twice = in-app duplicate", catalog.conflicts.contains {
+            $0.kind == .inApp && $0.entries.count == 2 })
+        check("same ⌘N in two apps is not a conflict", !catalog.conflicts.contains { $0.combo == "⌘N" })
+        check("disabled hotkey/system shortcut ignored", kinds.count == 3)
+
+        // NSUserKeyEquivalents encoding.
+        check("encode ⇧⌘E = $@e", MenuRemapper.encode(KeyCombo(keyCode: layout.unshifted["e"] ?? 14, modifiers: [.shift, .command]), layout: layout) == "$@e")
+        check("encode ⌃⌥← uses function key", MenuRemapper.encode(KeyCombo(keyCode: 123, modifiers: [.control, .option]), layout: layout) == "^~\u{F702}")
+        check("decode $@e = ⇧⌘E", MenuRemapper.decode("$@e", layout: layout) == "⇧⌘E")
+        check("decode ^\u{F703} = ⌃→", MenuRemapper.decode("^\u{F703}", layout: layout) == "⌃→")
+        check("item key uses escape-separated path",
+              MenuRemapper.itemKey(title: "PDF…", path: ["File", "Export"]) == "\u{1b}File\u{1b}Export\u{1b}PDF…")
+        check("Shortcut round-trips through JSON", {
+            let item = s("New", [.shift, .command], "N", code: 45)
+            let data = try? JSONEncoder().encode(item)
+            return data.flatMap { try? JSONDecoder().decode(Shortcut.self, from: $0) } == item
+        }())
+
         print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) failed.")
         return failures == 0 ? 0 : 1
     }

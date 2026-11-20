@@ -1,7 +1,7 @@
 import AppKit
 
 /// Modifier set independent of AppKit/AX encodings.
-struct Modifiers: OptionSet, Hashable {
+struct Modifiers: OptionSet, Hashable, Codable {
     let rawValue: Int
     init(rawValue: Int) { self.rawValue = rawValue }
 
@@ -37,11 +37,20 @@ struct Modifiers: OptionSet, Hashable {
         self = m
     }
 
+    var eventFlags: NSEvent.ModifierFlags {
+        var f: NSEvent.ModifierFlags = []
+        if contains(.control) { f.insert(.control) }
+        if contains(.option) { f.insert(.option) }
+        if contains(.shift) { f.insert(.shift) }
+        if contains(.command) { f.insert(.command) }
+        return f
+    }
+
     var symbols: [String] { Modifiers.ordered.filter { contains($0.mod) }.map(\.symbol) }
     var symbolString: String { symbols.joined() }
 }
 
-struct Shortcut: Identifiable, Hashable {
+struct Shortcut: Identifiable, Hashable, Codable {
     let id: String
     let title: String
     /// Menu path from the top-level menu down to (not including) the item, e.g. ["File", "Export"].

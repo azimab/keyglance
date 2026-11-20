@@ -12,11 +12,6 @@ struct OverlayView: View {
             Divider().opacity(0.5)
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider().opacity(0.5)
-            FooterView(state: state)
-                .frame(height: 18) // fixed: footer text/buttons changing must not resize the content area
-                .padding(.horizontal, 20)
-                .padding(.vertical, 9)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
@@ -109,38 +104,6 @@ struct HeaderView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .help(help)
-    }
-}
-
-struct FooterView: View {
-    @ObservedObject var state: AppState
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(hint).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            Spacer()
-            if state.axTrusted, !state.isLoading, state.shortcuts.count < 8 {
-                Label("Few menu shortcuts found — Electron/web apps may not expose full menus",
-                      systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 11)).foregroundStyle(.orange).lineLimit(1)
-            }
-            if state.hideUniversal && state.hiddenUniversalCount > 0 {
-                Button("\(state.hiddenUniversalCount) universal hidden · show") { state.hideUniversal = false }
-                    .buttonStyle(.link).font(.system(size: 11))
-            } else if !state.hideUniversal {
-                Button("hide universal") { state.hideUniversal = true }
-                    .buttonStyle(.link).font(.system(size: 11))
-            }
-        }
-    }
-
-    private var hint: String {
-        if let code = state.hoveredKey, let items = state.keyboardMap[code], !items.isEmpty {
-            return items.map { "\($0.display)  \(($0.path + [$0.title]).joined(separator: " › "))" }
-                .joined(separator: "   ·   ")
-        }
-        if state.pinned { return "esc to close · click modifiers to filter" }
-        return "Add modifiers to narrow · release to dismiss · 📌 to keep open"
     }
 }
 

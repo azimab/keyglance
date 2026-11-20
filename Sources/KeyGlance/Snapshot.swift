@@ -49,6 +49,33 @@ enum Snapshot {
             render(OverlayView(state: state), size: OverlayController.size(for: .list), appearance: appearance, to: path)
             print(path)
         }
+        // Shortcut Manager window, one shot per section.
+        let catalog = ShortcutCatalog(layout: state.layout, persistent: false)
+        let browser = AppMenuSnapshot(bundleID: "com.example.browser", name: "Browser", appPath: "/System/Applications/Safari.app",
+                                      scannedAt: Date(), shortcuts: sample(layout: state.layout))
+        let editor = AppMenuSnapshot(bundleID: "com.example.editor", name: "Editor", appPath: "/System/Applications/TextEdit.app",
+                                     scannedAt: Date(), shortcuts: [
+            Shortcut(id: "up", title: "Move Line Up", path: ["Selection"], modifiers: [.control], displayModifiers: [.control],
+                     keyCode: 126, keyLabel: "↑", enabled: true),
+            Shortcut(id: "lock", title: "Lock Document", path: ["File"], modifiers: [.command], displayModifiers: [.command],
+                     keyCode: 37, keyLabel: "L", enabled: true),
+            Shortcut(id: "line", title: "Go to Line…", path: ["Find"], modifiers: [.command], displayModifiers: [.command],
+                     keyCode: 37, keyLabel: "L", enabled: true),
+        ])
+        catalog.setForTesting(apps: [browser, editor], system: SystemHotkeys.parse([:]), hotkeys: [
+            CustomHotkey(name: "Open Terminal", combo: KeyCombo(keyCode: 17, modifiers: [.option, .command]),
+                         action: .openApp(path: "/System/Applications/Utilities/Terminal.app")),
+            CustomHotkey(name: "Show KeyGlance", combo: KeyCombo(keyCode: 49, modifiers: [.command]), action: .showOverlay),
+        ])
+        let nav = ManagerNavigation()
+        for section in ManagerSection.allCases {
+            nav.section = section
+            for appearance in [NSAppearance.Name.darkAqua, .aqua] {
+                let path = "\(outputDirectory)/manager-\(section.rawValue)-\(appearance == .aqua ? "light" : "dark").png"
+                render(ManagerView(catalog: catalog, nav: nav), size: NSSize(width: 1060, height: 680), appearance: appearance, to: path)
+                print(path)
+            }
+        }
         return 0
     }
 

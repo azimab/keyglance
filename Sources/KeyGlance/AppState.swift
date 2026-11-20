@@ -39,6 +39,8 @@ final class AppState: ObservableObject {
     /// Wired by AppDelegate so views can ask the panel to pin/close.
     var requestPin: () -> Void = {}
     var requestClose: () -> Void = {}
+    /// Wired by AppDelegate: every menu read also feeds the cross-app catalog.
+    var onMenusRead: (NSRunningApplication, [Shortcut]) -> Void = { _, _ in }
 
     private var cache: [pid_t: (date: Date, items: [Shortcut])] = [:]
     private var inFlight = Set<pid_t>()
@@ -93,6 +95,7 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 self.inFlight.remove(pid)
                 self.cache[pid] = (Date(), items)
+                self.onMenusRead(app, items)
                 if self.targetApp?.processIdentifier == pid {
                     self.shortcuts = items
                     self.isLoading = false
