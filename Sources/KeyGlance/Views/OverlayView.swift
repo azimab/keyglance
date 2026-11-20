@@ -14,9 +14,11 @@ struct OverlayView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider().opacity(0.5)
             FooterView(state: state)
+                .frame(height: 18) // fixed: footer text/buttons changing must not resize the content area
                 .padding(.horizontal, 20)
                 .padding(.vertical, 9)
         }
+        .frame(width: OverlayController.size.width, height: OverlayController.size.height)
         .background(VisualEffectBackground())
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -80,7 +82,7 @@ struct HeaderView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help(state.pinned ? "Close (esc)" : "Keep open after releasing ⌘")
+            .help(state.pinned ? "Close (esc)" : "Keep open after releasing modifiers")
         }
     }
 }
@@ -113,7 +115,7 @@ struct FooterView: View {
                 .joined(separator: "   ·   ")
         }
         if state.pinned { return "esc to close · click modifiers to filter" }
-        return "Add ⇧ ⌥ ⌃ to narrow · release ⌘ to dismiss · 📌 to keep open"
+        return "Add modifiers to narrow · release to dismiss · 📌 to keep open"
     }
 }
 

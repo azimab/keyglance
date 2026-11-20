@@ -1,7 +1,10 @@
 # KeyGlance (v0.1 prototype)
 
-A menu bar app that shows the frontmost app's shortcuts. Hold **⌘** and an overlay appears.
-Add ⇧ ⌥ ⌃ to narrow it down. Release ⌘ to dismiss.
+A menu bar app that shows the frontmost app's shortcuts. Hold any modifier (⌘ ⌥ ⌃ ⇧) and an overlay appears.
+Add more modifiers to narrow it down. Release to dismiss.
+
+- **Hold to Show** (menu bar): choose which modifiers open the overlay when held, or turn them all off.
+- **Pinned Shortcut** (menu bar): record a dedicated key combo that opens the overlay already pinned. Press it again (or esc) to close. Off by default.
 
 > "KeyGlance" is a working name.
 
@@ -14,7 +17,7 @@ Add ⇧ ⌥ ⌃ to narrow it down. Release ⌘ to dismiss.
 Both views:
 - Hide universal shortcuts (⌘C, ⌘V, ⌘Q…) by default; the footer shows how many are hidden.
 - Hide greyed-out (disabled) menu items by default.
-- Click **📌** (or click into search) to keep the overlay open after releasing ⌘. Press **esc** or click outside to close.
+- Click **📌** (or click into search) to keep the overlay open after releasing the modifiers. Press **esc** or click outside to close.
 - Click a modifier chip, or a modifier key on the keyboard, to change the filter.
 - Use the current keyboard layout for key labels and for placing shortcuts, so AZERTY, QWERTZ, Dvorak and others work.
 
@@ -23,19 +26,15 @@ Both views:
 Needs only the Command Line Tools; Xcode isn't required.
 
 ```sh
-./scripts/build-app.sh          # → build/KeyGlance.app
-open build/KeyGlance.app
+./scripts/make-signing-cert.sh  # once: stable signing identity (see below)
+./scripts/run.sh                # build, quit the old copy, launch the new one
 ```
+
+`./scripts/build-app.sh` only builds `build/KeyGlance.app`.
 
 On first launch, grant **Accessibility** in System Settings › Privacy & Security. The app notices the grant automatically.
 
-**Rebuilding resets the grant.** Ad-hoc signing changes the code signature on every build, so macOS treats each build as a new app. After a rebuild, run:
-
-```sh
-tccutil reset Accessibility dev.keyglance.KeyGlance
-```
-
-Then relaunch and grant access again. To avoid this, sign with a stable identity: `SIGN_IDENTITY="Apple Development: you@…" ./scripts/build-app.sh`.
+**Keeping the grant across rebuilds.** macOS ties the Accessibility grant to the code signature. Ad-hoc signing changes that signature on every build, so each build would need the grant again. `make-signing-cert.sh` creates a self-signed "KeyGlance Dev" identity in your login keychain once, and the build script uses it automatically. Grant access one more time after the first signed build. If you're still on ad-hoc signing and lose the grant, run `tccutil reset Accessibility dev.keyglance.KeyGlance`, relaunch and grant again.
 
 ### Tests and previews (no permissions needed)
 
@@ -59,7 +58,8 @@ This prints every parsed shortcut, flagged with disabled, universal or no-key. I
 | Task | Implementation |
 |---|---|
 | Read shortcuts | `MenuReader.swift` walks the AX menu bar and reads `AXMenuItemCmdChar`, `…Modifiers`, `…Glyph` and `…VirtualKey` in a single `AXUIElementCopyMultipleAttributeValues` call per item. It runs on a background queue. |
-| Hold detection | `HotkeyMonitor.swift` + `AppDelegate.handleFlags` use global `flagsChanged` monitors. The overlay appears after ⌘ alone is held for 0.8s (configurable). It's cancelled if any key or mouse button is pressed, so ⌘C stays ⌘C. |
+| Hold detection | `HotkeyMonitor.swift` + `AppDelegate.handleFlags` use global `flagsChanged` monitors. The overlay appears after any enabled modifier is held for 0.8s (both configurable). It's cancelled if any key or mouse button is pressed, so ⌘C stays ⌘C. |
+| Pinned shortcut | `GlobalHotkey.swift` registers the combo with Carbon `RegisterEventHotKey`, so it works without Accessibility and the keystroke never reaches the frontmost app. |
 | Overlay | `OverlayController.swift` uses a borderless `.nonactivatingPanel` NSPanel at status-bar level, so the frontmost app keeps focus. |
 | Instant display | Menus are prefetched when an app becomes active and cached per PID. The cache is refreshed whenever the overlay opens. |
 | Non-US layouts | `KeyboardLayout.swift` uses `UCKeyTranslate` on the current input source for labels and the char→key map. Characters such as `?` add an implied ⇧. |

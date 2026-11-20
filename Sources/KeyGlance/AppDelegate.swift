@@ -5,6 +5,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let state = AppState()
     private lazy var overlay = OverlayController(state: state)
     private let hotkeys = HotkeyMonitor()
+    private let pinHotkey = GlobalHotkey()
+    /// After the pin hotkey opens the overlay, ignore modifier changes until everything is released,
+    /// so letting go of the hotkey's own modifiers doesn't rewrite the filter.
+    private var ignoreFlagsUntilRelease = false
     private var statusItem: NSStatusItem!
     private var holdWork: DispatchWorkItem?
     private var prefetchWork: DispatchWorkItem?
@@ -16,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.requestClose = { [weak self] in self?.overlay.hide() }
         wireHotkeys()
         hotkeys.start()
+        pinHotkey.onPress = { [weak self] in self?.pinHotkeyPressed() }
+        pinHotkey.register(state.pinHotkey)
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(appActivated(_:)),
@@ -32,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // MARK: Hold-⌘ logic
+    // MARK: Hold-modifier logic
 
     private func wireHotkeys() {
         hotkeys.onFlags = { [weak self] mods in self?.handleFlags(mods) }
@@ -54,25 +60,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// True when `mods` includes at least one modifier the user enabled for hold-to-show.
+    private func isHoldTrigger(_ mods: Modifiers) -> Bool { !mods.isDisjoint(with: state.holdModifiers) }
+
     private func handleFlags(_ mods: Modifiers) {
+        if ignoreFlagsUntilRelease {
+            if mods.isEmpty { ignoreFlagsUntilRelease = false }
+            return
+        }
         if overlay.isVisible {
             if state.pinned {
                 if !mods.isEmpty { state.filter = mods }
-            } else if mods.contains(.command) {
+            } else if isHoldTrigger(mods) {
                 state.filter = mods // each added modifier narrows the view
             } else {
                 overlay.hide()
             }
             return
         }
-        if mods == [.command] { scheduleHold() } else { cancelHold() }
+        if isHoldTrigger(mods) { scheduleHold() } else { cancelHold() }
     }
 
     private func scheduleHold() {
         cancelHold()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, Modifiers(NSEvent.modifierFlags).contains(.command) else { return }
-            overlay.show(pinned: false, filter: Modifiers(NSEvent.modifierFlags))
+            guard let self else { return }
+            let mods = Modifiers(NSEvent.modifierFlags)
+            guard isHoldTrigger(mods) else { return }
+            overlay.show(pinned: false, filter: mods)
         }
         holdWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + state.holdDelay, execute: work)
@@ -82,6 +97,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         holdWork?.cancel()
         holdWork = nil
     }
+
+    private func pinHotkeyPressed() {
+        cancelHold()
+        if overlay.isVisible && state.pinned { overlay.hide(); return }
+        overlay.show(pinned: true, filter: defaultPinnedFilter)
+        if overlay.isVisible { ignoreFlagsUntilRelease = !Modifiers(NSEvent.modifierFlags).isEmpty }
+    }
+
+    private var defaultPinnedFilter: Modifiers { state.viewMode == .keyboard ? [.command] : [] }
 
     // MARK: App tracking
 
@@ -144,16 +168,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         disabled.state = state.hideDisabled ? .on : .off
         menu.addItem(disabled)
 
-        let delayMenu = NSMenu()
+        let holdMenu = NSMenu()
+        for entry in Modifiers.ordered.reversed() {
+            let i = item("\(entry.symbol)  \(entry.name)", #selector(toggleHoldModifier(_:)))
+            i.representedObject = entry.mod.rawValue
+            i.state = state.holdModifiers.contains(entry.mod) ? .on : .off
+            holdMenu.addItem(i)
+        }
+        holdMenu.addItem(.separator())
+        let delayHeader = NSMenuItem(title: "Delay", action: nil, keyEquivalent: "")
+        delayHeader.isEnabled = false
+        holdMenu.addItem(delayHeader)
         for delay in [0.5, 0.8, 1.2] {
             let i = item(String(format: "%.1fs", delay), #selector(setDelay(_:)))
             i.representedObject = delay
             i.state = abs(state.holdDelay - delay) < 0.01 ? .on : .off
-            delayMenu.addItem(i)
+            holdMenu.addItem(i)
         }
-        let delayItem = NSMenuItem(title: "Hold ⌘ For", action: nil, keyEquivalent: "")
-        delayItem.submenu = delayMenu
-        menu.addItem(delayItem)
+        let holdTitle = state.holdModifiers.isEmpty ? "Hold to Show: Off" : "Hold to Show: \(state.holdModifiers.symbols.joined(separator: " "))"
+        let holdItem = NSMenuItem(title: holdTitle, action: nil, keyEquivalent: "")
+        holdItem.submenu = holdMenu
+        menu.addItem(holdItem)
+
+        let hotkeyMenu = NSMenu()
+        hotkeyMenu.addItem(item("Record Shortcut…", #selector(recordPinHotkey)))
+        if state.pinHotkey != nil { hotkeyMenu.addItem(item("Turn Off", #selector(clearPinHotkey))) }
+        let hotkeyTitle = state.pinHotkey.map { "Pinned Shortcut: \($0.display(state.layout))" } ?? "Pinned Shortcut: Off"
+        let hotkeyItem = NSMenuItem(title: hotkeyTitle, action: nil, keyEquivalent: "")
+        hotkeyItem.submenu = hotkeyMenu
+        menu.addItem(hotkeyItem)
         menu.addItem(.separator())
 
         if !AXIsProcessTrusted() {
@@ -172,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showFromMenu() {
         // Let the status menu close first so the frontmost app is the real target.
         DispatchQueue.main.async { [self] in
-            overlay.show(pinned: true, filter: state.viewMode == .keyboard ? [.command] : [])
+            overlay.show(pinned: true, filter: defaultPinnedFilter)
         }
     }
 
@@ -185,6 +228,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setDelay(_ sender: NSMenuItem) {
         if let d = sender.representedObject as? Double { state.holdDelay = d }
     }
+    @objc private func toggleHoldModifier(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? Int else { return }
+        let mod = Modifiers(rawValue: raw)
+        if state.holdModifiers.contains(mod) { state.holdModifiers.remove(mod) } else { state.holdModifiers.insert(mod) }
+        cancelHold()
+    }
+
+    @objc private func recordPinHotkey() {
+        DispatchQueue.main.async { [self] in
+            pinHotkey.register(nil) // so pressing the current combo records it instead of firing it
+            guard let combo = HotkeyRecorder.record(layout: state.layout) else {
+                pinHotkey.register(state.pinHotkey)
+                return
+            }
+            if pinHotkey.register(combo) {
+                state.pinHotkey = combo
+            } else {
+                pinHotkey.register(state.pinHotkey)
+                let alert = NSAlert()
+                alert.messageText = "\(combo.display(state.layout)) is unavailable"
+                alert.informativeText = "Another app or the system already uses this shortcut. Try a different one."
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+            }
+        }
+    }
+
+    @objc private func clearPinHotkey() {
+        state.pinHotkey = nil
+        pinHotkey.register(nil)
+    }
+
     @objc private func grantAccess() {
         state.openAccessibilitySettings()
         pollForTrust()

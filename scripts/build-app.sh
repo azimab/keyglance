@@ -4,6 +4,7 @@
 #   DEBUG=1 ./scripts/build-app.sh         debug build
 #   SIGN_IDENTITY="Apple Development: …" ./scripts/build-app.sh
 #     A stable identity keeps the Accessibility grant across rebuilds (ad-hoc signing does not).
+#     Defaults to "KeyGlance Dev" when present (create it once with scripts/make-signing-cert.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,5 +24,10 @@ xcrun swiftc $OPT -swift-version 5 \
   -o "$APP/Contents/MacOS/KeyGlance"
 
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Prefer a stable identity (see make-signing-cert.sh) so Accessibility survives rebuilds.
+if [ -z "${SIGN_IDENTITY:-}" ] && security find-certificate -c "KeyGlance Dev" >/dev/null 2>&1; then
+  SIGN_IDENTITY="KeyGlance Dev"
+fi
 codesign --force --sign "${SIGN_IDENTITY:--}" "$APP"
+echo "Signed with: ${SIGN_IDENTITY:-ad-hoc}"
 echo "Built $APP"

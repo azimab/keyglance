@@ -18,6 +18,7 @@ enum Snapshot {
             ("keyboard-cmd", .keyboard, [.command], false, ""),
             ("keyboard-shift-cmd", .keyboard, [.shift, .command], false, ""),
             ("list-cmd", .list, [.command], false, ""),
+            ("list-all", .list, [], false, ""),
             ("list-search", .list, [], true, "tab"),
         ]
         for (name, mode, filter, pinned, search) in shots {

@@ -24,7 +24,7 @@ final class OverlayPanel: NSPanel {
 }
 
 final class OverlayController {
-    static let size = NSSize(width: 940, height: 500)
+    static let size = NSSize(width: 940, height: 460) // header + keyboard (365) + footer, no slack
 
     private let state: AppState
     private lazy var panel: OverlayPanel = {
@@ -32,6 +32,7 @@ final class OverlayController {
         let host = NSHostingView(rootView: OverlayView(state: state))
         host.frame = NSRect(origin: .zero, size: Self.size)
         host.autoresizingMask = [.width, .height]
+        host.sizingOptions = [] // never let SwiftUI content resize the panel
         panel.contentView = host
         return panel
     }()

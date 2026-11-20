@@ -10,17 +10,15 @@ struct KeyboardView: View {
 
     var body: some View {
         let map = state.keyboardMap
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(spacing: gap) {
-                row(KeyboardGeometry.functionRow, height: fnHeight, map: map)
-                ForEach(Array(KeyboardGeometry.rows.enumerated()), id: \.offset) { _, keys in
-                    row(keys, height: keyHeight, map: map)
-                }
+        VStack(spacing: gap) {
+            row(KeyboardGeometry.functionRow, height: fnHeight, map: map)
+            ForEach(Array(KeyboardGeometry.rows.enumerated()), id: \.offset) { _, keys in
+                row(keys, height: keyHeight, map: map)
             }
-            otherKeys
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func row(_ keys: [KeyDef], height: CGFloat, map: [Int: [Shortcut]]) -> some View {
@@ -58,29 +56,6 @@ struct KeyboardView: View {
                 if inside { state.hoveredKey = code } else if state.hoveredKey == code { state.hoveredKey = nil }
             }
             .onTapGesture { if let modifier { state.toggleFilter(modifier) } }
-    }
-
-    @ViewBuilder private var otherKeys: some View {
-        let extra = state.offKeyboard
-        if !extra.isEmpty {
-            HStack(spacing: 8) {
-                Text("Other keys").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(extra) { s in
-                            HStack(spacing: 5) {
-                                KeyComboView(shortcut: s)
-                                Text(s.title).font(.system(size: 11)).lineLimit(1)
-                            }
-                            .help((s.path + [s.title]).joined(separator: " › "))
-                        }
-                    }
-                }
-            }
-        } else if state.exactMatches.isEmpty && !state.shortcuts.isEmpty {
-            Text("No shortcuts use exactly \(state.filter.isEmpty ? "no modifiers" : state.filter.symbolString) in this app.")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-        }
     }
 }
 
