@@ -83,6 +83,24 @@ enum SelfTest {
         check("list search 'win' → New Window first", state.listMatches.first?.title == "New Window")
         check("hidden universal count = 1", state.hiddenUniversalCount == 1)
 
+        // List packing: menus stay whole in one column; only a menu taller than a column splits.
+        func menu(_ name: String, _ count: Int) -> [Shortcut] {
+            (0..<count).map { Shortcut(id: "\(name)\($0)", title: "\(name) \($0)", path: [name], modifiers: [.command],
+                                       displayModifiers: [.command], keyCode: nil, keyLabel: "X", enabled: true) }
+        }
+        func isHeader(_ e: ColumnPage.Entry) -> Bool { if case .header = e { return true } else { return false } }
+        // 600pt tall: ~18 comfortable rows per column, 4 columns wide.
+        let size = CGSize(width: 1196, height: 600)
+        let whole = ColumnPage(entries: ShortcutListView.entries(menu("A", 10) + menu("B", 10) + menu("C", 3), grouped: true), size: size)
+        check("each menu stays in a single column",
+              whole.columns.allSatisfy { col in col.filter(isHeader).count >= 1 && isHeader(col[0]) }
+              && whole.columns.flatMap { $0 }.filter(isHeader).count == 3)
+        let long = ColumnPage(entries: ShortcutListView.entries(menu("A", 3) + menu("B", 30), grouped: true), size: size)
+        let longHeaders = long.columns.flatMap { $0 }.filter(isHeader).count
+        check("oversize menu splits without a repeated header", longHeaders == 2 && long.columns.count >= 3 && long.overflow == 0)
+        check("oversize menu starts at the top of a fresh column",
+              long.columns.allSatisfy { col in col.dropFirst().allSatisfy { !isHeader($0) } })
+
         print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) failed.")
         return failures == 0 ? 0 : 1
     }

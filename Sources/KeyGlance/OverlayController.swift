@@ -45,11 +45,13 @@ final class OverlayController {
 
     init(state: AppState) {
         self.state = state
-        // Resize around the current center when switching views while the panel is up.
         observers.append(state.$darkMode.sink { [weak self] dark in
             self?.panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         })
-        observers.append(state.$viewMode.dropFirst().removeDuplicates().sink { [weak self] mode in
+        // Resize around the current center when switching views while the panel is up.
+        // @Published emits in willSet; hop to the next main-queue turn so the redraw that
+        // setFrame triggers sees the new mode rather than the old one.
+        observers.append(state.$viewMode.dropFirst().removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] mode in
             guard let self, self.panel.isVisible else { return }
             let center = NSPoint(x: self.panel.frame.midX, y: self.panel.frame.midY)
             self.place(size: Self.size(for: mode), center: center, screen: self.panel.screen)

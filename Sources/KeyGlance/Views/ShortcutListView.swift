@@ -75,7 +75,7 @@ struct ShortcutListView: View {
     private func entryView(_ entry: ColumnPage.Entry, metrics: ColumnPage.Metrics, showTopMenu: Bool) -> some View {
         let appName = state.targetApp?.localizedName
         switch entry {
-        case let .header(title, continued):
+        case let .header(title):
             HStack(spacing: 7) {
                 Image(systemName: MenuIcon.symbol(for: title, appName: appName))
                     .font(.system(size: metrics.headerFont - 1, weight: .medium))
@@ -84,9 +84,6 @@ struct ShortcutListView: View {
                 Text(title)
                     .font(.system(size: metrics.headerFont, weight: .semibold))
                     .foregroundStyle(.primary)
-                if continued {
-                    Text("continued").font(.system(size: metrics.headerFont - 3)).foregroundStyle(.tertiary)
-                }
             }
             .lineLimit(1)
             .padding(.horizontal, ColumnPage.rowPadding - 2)
@@ -136,7 +133,7 @@ struct ShortcutListView: View {
             if buckets[s.topMenu] == nil { order.append(s.topMenu) }
             buckets[s.topMenu, default: []].append(s)
         }
-        return order.flatMap { menu in [.header(menu, continued: false)] + buckets[menu]!.map { .item($0) } }
+        return order.flatMap { menu in [.header(menu)] + buckets[menu]!.map { .item($0) } }
     }
 }
 
@@ -195,7 +192,7 @@ enum MenuIcon {
 /// (down to a floor) when needed so the whole set fits on one page.
 struct ColumnPage {
     enum Entry {
-        case header(String, continued: Bool)
+        case header(String)
         case item(Shortcut)
     }
 
@@ -278,29 +275,39 @@ struct ColumnPage {
         return k
     }
 
-    /// Greedy column-major fill. Never strands a header at a column bottom; repeats a "(cont.)"
-    /// header when a menu's items spill into the next column.
+    /// Column-major fill that keeps each menu (header + its items) together in one column, moving
+    /// the whole menu to the next column when it doesn't fit. Only a menu taller than an entire column
+    /// is split: it starts at the top of a fresh column and flows on into the next, with no repeated header.
     private static func pack(_ entries: [Entry], capacity: Int) -> (columns: [[Entry]], units: [Int]) {
+        var sections: [[Entry]] = []
+        for e in entries {
+            if case .header = e {
+                sections.append([e])
+            } else if let first = sections.last?.first, case .header = first {
+                sections[sections.count - 1].append(e)
+            } else {
+                sections.append([e]) // ungrouped (search results): each row flows on its own
+            }
+        }
+
         var cols: [[Entry]] = [[]]
         var used = [0]
-        var currentMenu: String?
-        for e in entries {
-            switch e {
-            case let .header(title, _):
-                currentMenu = title
-                if !cols[cols.count - 1].isEmpty, used[used.count - 1] + headerUnits + itemUnits > capacity {
-                    cols.append([]); used.append(0)
+        func newColumn() { cols.append([]); used.append(0) }
+        func add(_ e: Entry) { cols[cols.count - 1].append(e); used[used.count - 1] += units(e) }
+
+        for section in sections {
+            let size = section.reduce(0) { $0 + units($1) }
+            if size <= capacity - used[used.count - 1] {
+                section.forEach(add)
+            } else if size <= capacity {
+                newColumn()
+                section.forEach(add)
+            } else {
+                if !cols[cols.count - 1].isEmpty { newColumn() }
+                for e in section {
+                    if used[used.count - 1] + units(e) > capacity { newColumn() }
+                    add(e)
                 }
-                cols[cols.count - 1].append(e); used[used.count - 1] += headerUnits
-            case .item:
-                if !cols[cols.count - 1].isEmpty, used[used.count - 1] + itemUnits > capacity {
-                    cols.append([]); used.append(0)
-                    if let menu = currentMenu, capacity >= headerUnits + itemUnits {
-                        cols[cols.count - 1].append(.header(menu, continued: true))
-                        used[used.count - 1] += headerUnits
-                    }
-                }
-                cols[cols.count - 1].append(e); used[used.count - 1] += itemUnits
             }
         }
         return (cols, used)
